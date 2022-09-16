@@ -73,6 +73,7 @@ runs:
 
 
     - name: Jib build
+      shell: bash       
       run: |
         mvn -B -e compile -Dmaven.test.skip=true \
             com.google.cloud.tools:jib-maven-plugin:${{ inputs.JIB_VERSION }}:build \
