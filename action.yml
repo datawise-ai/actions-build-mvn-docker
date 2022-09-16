@@ -1,5 +1,5 @@
-name: "k8s deploy"
-description: "deploy to k8s"
+name: "datawise-build-mvn-docker"
+description: "datawise build and push mvn container docker"
 inputs: 
   PROJECT: 
     required: true
