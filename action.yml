@@ -30,6 +30,12 @@ inputs:
   JIB_VERSION:
     required: true
     default: "3.3.0"
+  BUILD_ARGS:
+    required: false
+    default: ""
+  SKIP_TESTS:
+    required: false
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -75,11 +81,11 @@ runs:
     - name: Jib build
       shell: bash       
       run: |
-        mvn -B -e compile -Dmaven.test.skip=true \
+        mvn -B -e compile -Dmaven.test.skip=${{ inputs.SKIP_TESTS }} \
             com.google.cloud.tools:jib-maven-plugin:${{ inputs.JIB_VERSION }}:build \
             -Djib.from.image=${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }}  \
             -Djib.to.image=${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}  \
-            -Djib.to.tags=${{ inputs.VERSION }},latest
+            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
 
 
 
