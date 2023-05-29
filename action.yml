@@ -1,12 +1,12 @@
 name: "datawise-build-mvn-docker"
 description: "datawise build and push mvn container docker"
-inputs: 
-  PROJECT: 
+inputs:
+  PROJECT:
     required: true
   APP:
     required: true
   SERVICE:
-    required: true    
+    required: true
   INSTANCE:
     required: true
   VERSION:
@@ -14,7 +14,7 @@ inputs:
   DOCKER_REPOSITORY_BASE:
     required: true
     default: "docker.datawise.ai"
-  DOCKER_USER: 
+  DOCKER_USER:
     required: true
     default: "builder"
   DOCKER_PASS:
@@ -24,7 +24,7 @@ inputs:
   JAVA_DISTRIBUTION:
     required: true
     default: "temurin"
-  JIB_JAVA_BASE: 
+  JIB_JAVA_BASE:
     required: true
     default: "eclipse-temurin"
   JIB_VERSION:
@@ -45,7 +45,7 @@ runs:
 
     - name: setup docker context for buildx
       id: buildx-context
-      shell: bash       
+      shell: bash
       run: |
         docker context create builders || true
 
@@ -60,6 +60,22 @@ runs:
         registry: ${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}
         username: builder
         password: ${{ inputs.DOCKER_PASS }}
+
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v3
+      with:
+        images: ${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}
+        flavor: |
+          latest=true
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=ref,event=tag
+          type=raw,value=${{ inputs.VERSION }}
+          type=semver,pattern={{version}}
+          type=raw,value={{date 'YYYYMMDD'}}
+          type=sha
 
     - uses: actions/checkout@v2
 
@@ -79,14 +95,11 @@ runs:
 
 
     - name: Jib build
-      shell: bash       
+      shell: bash
       run: |
         mvn -B -e compile -Dmaven.test.skip=${{ inputs.SKIP_TESTS }} \
             com.google.cloud.tools:jib-maven-plugin:${{ inputs.JIB_VERSION }}:build \
             -Djib.from.image=${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }}  \
             -Djib.to.image=${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}  \
-            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
-
-
-
-
+            -Djib.container.creationTime=USE_CURRENT_TIMESTAMP \
+            -Djib.to.tags=${{ steps.meta.outputs.tags }},${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
