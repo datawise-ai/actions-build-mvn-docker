@@ -102,4 +102,5 @@ runs:
             -Djib.from.image=${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }}  \
             -Djib.to.image=${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}  \
             -Djib.container.creationTime=USE_CURRENT_TIMESTAMP \
-            -Djib.to.tags=${{ steps.meta.outputs.tags }},${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
+            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
+#            -Djib.to.tags=${{ steps.meta.outputs.tags }},${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
