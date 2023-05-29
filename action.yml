@@ -77,6 +77,18 @@ runs:
           type=raw,value={{date 'YYYYMMDD'}}
           type=sha
 
+    - name: prepare tags for mvn (comma sep)
+      id: tags_for_mvn
+      shell: bash
+      run: |
+          export IMAGE_WITH_TAGS="${{ steps.meta.outputs.tags }}"
+          export REMOVE_THIS="${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}:"
+          export RESULT=$(sed -r "s|${REMOVE_THIS}||g" <<< "${IMAGE_WITH_TAGS}")
+          echo $RESULT
+          export RESULT2=$(sed -r 's/\s+/,/g' <<< `echo $RESULT`)
+          echo $RESULT2
+          echo "tags=${RESULT2}" >> $GITHUB_OUTPUT
+
     - uses: actions/checkout@v2
 
     - uses: actions/setup-java@v3
@@ -102,5 +114,5 @@ runs:
             -Djib.from.image=${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }}  \
             -Djib.to.image=${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}  \
             -Djib.container.creationTime=USE_CURRENT_TIMESTAMP \
-            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
-#            -Djib.to.tags=${{ steps.meta.outputs.tags }},${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
+            -Djib.to.tags=${{ steps.tags_for_mvn.outputs.tags }}  ${{ inputs.BUILD_ARGS }}
+#            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
