@@ -19,6 +19,9 @@ inputs:
     default: "builder"
   DOCKER_PASS:
     required: true
+  QEMU_SETUP:
+    required: false
+    default: "true"
   JAVA_VERSION:
     required: true
   JAVA_DISTRIBUTION:
@@ -30,32 +33,47 @@ inputs:
   JIB_VERSION:
     required: true
     default: "3.3.0"
+  MAVEN_JIB_PORT:
+    required: false
+    default: "80"
+  MAVEN_JIB_MAINCLASS:
+    required: false
+    default: "main"    
   BUILD_ARGS:
     required: false
     default: ""
   SKIP_TESTS:
     required: false
     default: "false"
+  CHECKOUT:
+    default: "true"    
+  RUN_BEFORE_BUILD:
+    required: false
+    default: "echo \"nothing to run\""
+  JAVA_TESTS_XML:
+    required: false
+    default: "target/surefire-reports"
 runs:
   using: "composite"
   steps:
 
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v1
+      uses: docker/setup-qemu-action@v3
+      if: ${{ inputs.QEMU_SETUP == 'true' }}
 
     - name: setup docker context for buildx
       id: buildx-context
       shell: bash
       run: |
         docker context create builders || true
+      if: ${{ inputs.QEMU_SETUP == 'true' }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
-      with:
-        endpoint: builders
+    - name: Checkout repo
+      if: ${{ inputs.CHECKOUT == 'true' }}
+      uses: actions/checkout@v4
 
     - name: Login to Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         registry: ${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}
         username: builder
@@ -63,7 +81,7 @@ runs:
 
     - name: Docker meta
       id: meta
-      uses: docker/metadata-action@v3
+      uses: docker/metadata-action@v5
       with:
         images: ${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}
         flavor: |
@@ -89,15 +107,48 @@ runs:
           echo $RESULT2
           echo "tags=${RESULT2}" >> $GITHUB_OUTPUT
 
-    - uses: actions/checkout@v2
 
-    - uses: actions/setup-java@v3
+    - name: send info to summary
+      id: echo2summary
+      shell: bash
+      run: |
+          echo ''  >> $GITHUB_STEP_SUMMARY
+          echo ":rocket: action docker mvn in aws :rocket:"  >>  $GITHUB_STEP_SUMMARY
+          echo ''  >> $GITHUB_STEP_SUMMARY
+          echo '| Variable | Value |'                        >> $GITHUB_STEP_SUMMARY
+          echo '| :---: | :---: | '                          >> $GITHUB_STEP_SUMMARY
+          echo '| ref | ${{ github.ref }} | '                >> $GITHUB_STEP_SUMMARY
+          echo '| ENV_GROUP | ${{ inputs.PROJECT }}-${{ inputs.DEPLOY_TARGET }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| PROJECT | ${{ inputs.PROJECT }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| APP | ${{ inputs.APP }} | '   >> $GITHUB_STEP_SUMMARY
+          echo '| SERVICE | ${{ inputs.SERVICE }} | '   >> $GITHUB_STEP_SUMMARY
+          echo '| INSTANCE | ${{ inputs.INSTANCE }} | '   >> $GITHUB_STEP_SUMMARY
+          echo '| BRANCH | ${{ github.ref_name }} | ' >> $GITHUB_STEP_SUMMARY
+          echo '| DEPLOY_TARGET | ${{ inputs.DEPLOY_TARGET }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| AWS_ACCESS | ${{ inputs.AWS_ACCESS }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| AWS_ZONE | ${{ inputs.AWS_ZONE }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| QEMU_SETUP | ${{ inputs.QEMU_SETUP }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| JAVA_VERSION | ${{ inputs.JAVA_VERSION }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| JAVA_DISTRIBUTION | ${{ inputs.JAVA_DISTRIBUTION }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| JIB_JAVA_BASE | ${{ inputs.JIB_JAVA_BASE }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| JIB_VERSION | ${{ inputs.JIB_VERSION }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| MAVEN_JIB_PORT | ${{ inputs.MAVEN_JIB_PORT }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| MAVEN_JIB_MAINCLASS | ${{ inputs.MAVEN_JIB_MAINCLASS }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| BUILD_ARGS | ${{ inputs.BUILD_ARGS }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| SKIP_TESTS | ${{ inputs.SKIP_TESTS }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| FROM_IMAGE | ${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| TO_IMAGE | ${{ steps.login-ecr.outputs.registry }}/${{ inputs.PROJECT }}-${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| RUN_BEFORE_BUILD | ${{ inputs.RUN_BEFORE_BUILD }} | '           >> $GITHUB_STEP_SUMMARY
+          echo '| TAGS | ${{ steps.tags_for_mvn.outputs.tags }} | '           >> $GITHUB_STEP_SUMMARY
+
+
+    - uses: actions/setup-java@v4
       with:
         distribution: ${{ inputs.JAVA_DISTRIBUTION }}
         java-version: ${{ inputs.JAVA_VERSION }}
 
     - name: Cache mvn packages
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.m2
         key: ${{ runner.OS }}-mvn-${{ hashFiles('**/pom.xml') }}
@@ -105,14 +156,37 @@ runs:
           ${{ runner.OS }}-mvn-
           ${{ runner.OS }}-
 
-
-    - name: Jib build
+    - name: run before build
+      id: run-before-build
       shell: bash
       run: |
-        mvn -B -e compile -Dmaven.test.skip=${{ inputs.SKIP_TESTS }} \
+        ${{ inputs.RUN_BEFORE_BUILD }}  || true
+
+    - name: Compile code and Jib build
+      shell: bash
+      run: |
+        mvn -B -e compile -Dmaven.test.skip=true \
             com.google.cloud.tools:jib-maven-plugin:${{ inputs.JIB_VERSION }}:build \
             -Djib.from.image=${{ inputs.JIB_JAVA_BASE }}:${{ inputs.JAVA_VERSION }}  \
             -Djib.to.image=${{ inputs.PROJECT }}.${{ inputs.DOCKER_REPOSITORY_BASE }}/${{ inputs.APP }}-${{ inputs.SERVICE }}-${{ inputs.INSTANCE }}  \
             -Djib.container.creationTime=USE_CURRENT_TIMESTAMP \
+            -Djib.container.mainClass=${{ inputs.MAVEN_JIB_MAINCLASS }} \
+            -Djib.container.ports=${{ inputs.MAVEN_JIB_PORT }} \
             -Djib.to.tags=${{ steps.tags_for_mvn.outputs.tags }}  ${{ inputs.BUILD_ARGS }}
-#            -Djib.to.tags=${{ inputs.VERSION }},latest ${{ inputs.BUILD_ARGS }}
+
+    - name: Run maven tests
+      shell: bash
+      if: ${{ inputs.SKIP_TESTS == 'false' }}
+      run: |
+        mvn ${{ inputs.BUILD_ARGS }} -Dmaven.test.failure.ignore=true test          
+        ls -l ${{ github.workspace }}/${{ inputs.JAVA_TESTS_XML }}/
+
+    - name: Test Report
+      uses: dorny/test-reporter@v1
+      if: ${{ inputs.SKIP_TESTS == 'false' }}
+      with:
+        name: Tests            # Name of the check run which will be created
+        path: ${{ github.workspace }}/${{ inputs.JAVA_TESTS_XML }}/*.xml    # Path to test results
+        reporter: java-junit        # Format of test results
+        fail-on-error: true
+        fail-on-empty: true
